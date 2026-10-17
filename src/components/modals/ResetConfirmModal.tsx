@@ -37,7 +37,7 @@ export const ResetConfirmModal: React.FC = () => {
         <div className="p-4 bg-[#0D131F] border border-amber-500/20 rounded-xl flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <p className="text-xs text-slate-300 leading-relaxed">
-            This action will restore all 4 team purses to their baseline demo balance, reset Lot #04 (Arjun Shah) as the active live player, re-arm the auction timer, and restore the sample audit log.
+            This action will restore all 4 team points budgets to their baseline demo balance, reset Lot #04 (Arjun Shah) as the active live player, re-arm the auction timer, and restore the sample audit log.
           </p>
         </div>
 

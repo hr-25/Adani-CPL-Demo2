@@ -15,6 +15,8 @@ import {
 import { useAuction } from '../context/AuctionContext';
 import { ViewMode } from '../types/auction';
 
+import { formatPoints } from '../utils/formatters';
+
 export const Header: React.FC = () => {
   const {
     viewMode,
@@ -31,8 +33,8 @@ export const Header: React.FC = () => {
     { mode: 'admin', label: 'Admin Console', icon: <Gavel className="w-4 h-4" />, isLive: true },
     { mode: 'team', label: 'Team Manager', icon: <Shield className="w-4 h-4" /> },
     { mode: 'projector', label: 'Projector Display', icon: <Tv className="w-4 h-4" /> },
-    { mode: 'live-room', label: 'Live Arena', icon: <Activity className="w-4 h-4" /> },
-    { mode: 'pool', label: 'Player Pool', icon: <Users className="w-4 h-4" /> },
+    { mode: 'squads', label: 'Team Squads', icon: <Users className="w-4 h-4" /> },
+    { mode: 'pool', label: 'Player Pool', icon: <Layers className="w-4 h-4" /> },
   ];
 
   const handleToggleFullScreen = () => {
@@ -144,7 +146,7 @@ export const Header: React.FC = () => {
           {/* Reset Demo Button */}
           <button
             onClick={openResetModal}
-            title="Reset Demo Data & Purses"
+            title="Reset Demo Data & Points Budgets"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono text-xs font-bold transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -172,19 +174,19 @@ export const Header: React.FC = () => {
         })}
       </div>
 
-      {/* Secondary Financial Telemetry Ticker Strip */}
+      {/* Secondary Points Telemetry Ticker Strip */}
       <div className="h-10 w-full bg-[#101622] px-4 lg:px-8 flex items-center justify-between overflow-hidden border-t border-white/5 text-xs font-mono">
         <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap py-1">
           <div className="flex items-center gap-1.5 text-[#00D2FF] font-bold shrink-0">
             <span className="w-2 h-2 rounded-full bg-[#00D2FF] animate-pulse"></span>
-            <span className="tracking-wider uppercase">PURSE TELEMETRY:</span>
+            <span className="tracking-wider uppercase">POINTS TELEMETRY:</span>
           </div>
 
           {teams.map((t) => (
             <div key={t.id} className="flex items-center gap-1.5 shrink-0 px-2 py-0.5 rounded bg-white/5">
               <span className="text-slate-400 font-semibold">{t.shortName}:</span>
               <span className="font-bold text-white tabular-nums">
-                ₹{t.remainingPurse.toLocaleString('en-IN')}
+                {formatPoints(t.remainingPurse)} Points
               </span>
               <span className="text-[10px] text-slate-500">({t.squadCount}/11)</span>
             </div>
@@ -199,7 +201,7 @@ export const Header: React.FC = () => {
                 #{nextPlayerOnDeck.lotNumber} {nextPlayerOnDeck.name} ({nextPlayerOnDeck.role})
               </span>
               <span className="text-cyan-400 font-semibold">
-                BASE: ₹{nextPlayerOnDeck.basePrice.toLocaleString('en-IN')}
+                BASE POINTS: {formatPoints(nextPlayerOnDeck.basePrice)} Points
               </span>
             </div>
           )}

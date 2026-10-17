@@ -1,8 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import confetti from 'canvas-confetti';
-import { Player, Team, BidRecord, AuditLog, ViewMode } from '../types/auction';
+import { Player, Team, BidRecord, AuditLog, ViewMode, Role } from '../types/auction';
 import { INITIAL_TEAMS, INITIAL_PLAYERS, INITIAL_BIDS_LOT4, INITIAL_AUDIT_LOGS } from '../data/initialData';
 import { sound } from '../utils/soundEngine';
+import { formatPoints, formatPointsWithLabel } from '../utils/formatters';
+
+export interface RecentSale {
+  id: string;
+  lotNumber: number;
+  player: Player;
+  role: Role;
+  team: Team;
+  price: number;
+  time: string;
+}
 
 interface AuctionContextType {
   players: Player[];
@@ -19,6 +30,7 @@ interface AuctionContextType {
   isPaused: boolean;
   viewMode: ViewMode;
   selectedTeamId: string;
+  selectedCategory: Role;
   soundEnabled: boolean;
   masterVolume: number;
   lastActionMessage: string;
@@ -32,6 +44,7 @@ interface AuctionContextType {
   // Actions
   setViewMode: (mode: ViewMode) => void;
   setSelectedTeamId: (teamId: string) => void;
+  setSelectedCategory: (category: Role) => void;
   placeBid: (teamId: string, customAmount?: number) => { success: boolean; message: string };
   placeIncrementBid: (increment: number, teamId?: string) => { success: boolean; message: string };
   startTimer: () => void;
@@ -43,7 +56,8 @@ interface AuctionContextType {
   triggerWarning: (stage: 'GOING ONCE' | 'GOING TWICE' | 'FINAL CALL') => void;
   confirmSold: () => void;
   confirmUnsold: () => void;
-  advanceNextLot: () => void;
+  advanceNextLot: () => { success: boolean; message: string };
+  loadPlayerToRing: (playerId: string) => { success: boolean; message: string };
   goToLot: (index: number) => void;
   resetDemo: () => void;
   openSoldModal: () => void;
@@ -55,6 +69,12 @@ interface AuctionContextType {
   toggleSound: () => void;
   setMasterVolume: (val: number) => void;
   validateBid: (teamId: string, bidAmount: number) => { valid: boolean; reason?: string };
+  getCategoryEligiblePlayers: (role: Role) => Player[];
+  getCategoryAllPlayers: (role: Role) => Player[];
+  inspectPlayer: Player | null;
+  isProfileModalOpen: boolean;
+  openPlayerProfile: (player: Player) => void;
+  closePlayerProfile: () => void;
 }
 
 const AuctionContext = createContext<AuctionContextType | null>(null);
@@ -64,7 +84,7 @@ const DEFAULT_TIMER = 15;
 export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [players, setPlayers] = useState<Player[]>(() => INITIAL_PLAYERS);
   const [teams, setTeams] = useState<Team[]>(() => INITIAL_TEAMS);
-  const [activePlayerIndex, setActivePlayerIndex] = useState<number>(3); // Lot #04 Arjun Shah initially
+  const [activePlayerIndex, setActivePlayerIndex] = useState<number>(15); // Lot #04 Arjun Shah initially
   const [currentBid, setCurrentBid] = useState<number>(240000);
   const [highestBidderTeamId, setHighestBidderTeamId] = useState<string | null>('strikers');
   const [bidRecords, setBidRecords] = useState<BidRecord[]>(() => INITIAL_BIDS_LOT4);
@@ -76,6 +96,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [viewMode, setViewMode] = useState<ViewMode>('admin');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('titans');
+  const [selectedCategory, setSelectedCategory] = useState<Role>('All-Rounder');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [masterVolume, setMasterVolumeState] = useState<number>(85);
   const [lastActionMessage, setLastActionMessage] = useState<string>(
@@ -85,12 +106,51 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isSoldModalOpen, setIsSoldModalOpen] = useState<boolean>(false);
   const [isUnsoldModalOpen, setIsUnsoldModalOpen] = useState<boolean>(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState<boolean>(false);
+  const [inspectPlayer, setInspectPlayer] = useState<Player | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  const openPlayerProfile = useCallback((player: Player) => {
+    setInspectPlayer(player);
+    setIsProfileModalOpen(true);
+  }, []);
+
+  const closePlayerProfile = useCallback(() => {
+    setIsProfileModalOpen(false);
+    setInspectPlayer(null);
+  }, []);
 
   const activePlayer = players[activePlayerIndex] || null;
   const highestBidder = teams.find((t) => t.id === highestBidderTeamId) || null;
 
-  // Next on deck player
-  const nextPlayerOnDeck = players.slice(activePlayerIndex + 1).find((p) => p.status === 'UPCOMING') || null;
+  // Category helpers:
+  // Returns eligible (UPCOMING) players in a specific role, sorted by base price ascending
+  const getCategoryEligiblePlayers = useCallback(
+    (role: Role) => {
+      return players
+        .filter((p) => p.role === role && p.status === 'UPCOMING')
+        .sort((a, b) => a.basePrice - b.basePrice || a.lotNumber - b.lotNumber);
+    },
+    [players]
+  );
+
+  // Returns ALL players in a specific role (including Sold, In Ring, Unsold, Upcoming), sorted by base price ascending
+  const getCategoryAllPlayers = useCallback(
+    (role: Role) => {
+      return players
+        .filter((p) => p.role === role)
+        .sort((a, b) => a.basePrice - b.basePrice || a.lotNumber - b.lotNumber);
+    },
+    [players]
+  );
+
+  // Next on deck player based on current selected category
+  const nextPlayerOnDeck = useMemo(() => {
+    const eligible = players
+      .filter((p) => p.role === selectedCategory && p.status === 'UPCOMING')
+      .sort((a, b) => a.basePrice - b.basePrice || a.lotNumber - b.lotNumber);
+    return eligible.length > 0 ? eligible[0] : null;
+  }, [players, selectedCategory]);
+
   const totalLots = players.length;
   const completedLotsCount = players.filter((p) => p.status === 'SOLD' || p.status === 'UNSOLD').length;
 
@@ -153,26 +213,43 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!activePlayer || activePlayer.status !== 'IN_RING') {
         return { valid: false, reason: 'No active player is currently under the hammer.' };
       }
+      if (isNaN(bidAmount) || bidAmount <= 0) {
+        return { valid: false, reason: 'Please enter a valid positive points amount.' };
+      }
       if (bidAmount <= currentBid) {
-        return { valid: false, reason: `Bid must be higher than current bid (₹${currentBid.toLocaleString('en-IN')}).` };
+        return {
+          valid: false,
+          reason: `Custom bid of ${formatPointsWithLabel(bidAmount)} must be higher than the Current Highest Bid (${formatPointsWithLabel(currentBid)}).`,
+        };
+      }
+      const minIncrement = 10000;
+      if (bidAmount - currentBid < minIncrement) {
+        return {
+          valid: false,
+          reason: `Custom bid must follow the minimum bid increment of at least ${formatPointsWithLabel(minIncrement)} above Current Highest Bid (Minimum required: ${formatPointsWithLabel(currentBid + minIncrement)}).`,
+        };
       }
       const team = teams.find((t) => t.id === teamId);
       if (!team) {
         return { valid: false, reason: 'Invalid franchise selected.' };
       }
+      if (team.squadCount >= team.maxSquad) {
+        return { valid: false, reason: `${team.name} has already reached maximum squad capacity (11/11).` };
+      }
       if (bidAmount > team.remainingPurse) {
         return {
           valid: false,
-          reason: `Bid exceeds remaining purse (₹${team.remainingPurse.toLocaleString('en-IN')}).`,
+          reason: `Bid of ${formatPointsWithLabel(bidAmount)} exceeds ${team.shortName}'s available Points Balance (${formatPointsWithLabel(team.remainingPurse)}).`,
         };
       }
       // Squad budget reserve validation
       const remainingSlots = team.maxSquad - team.squadCount - 1;
       const minRequiredReserve = Math.max(0, remainingSlots) * team.minReservePerSlot;
       if (team.remainingPurse - bidAmount < minRequiredReserve) {
+        const maxSafe = Math.max(0, team.remainingPurse - minRequiredReserve);
         return {
           valid: false,
-          reason: `Reserve Rule: Minimum ₹${minRequiredReserve.toLocaleString('en-IN')} must be preserved for ${remainingSlots} remaining squad slots.`,
+          reason: `Reserve Rule: Minimum ${formatPointsWithLabel(minRequiredReserve)} must be preserved for ${remainingSlots} remaining squad slots. Maximum safe bid for ${team.shortName} is ${formatPointsWithLabel(maxSafe)}.`,
         };
       }
       return { valid: true };
@@ -223,11 +300,11 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
       setBidRecords((prev) => [newRecord, ...prev]);
 
-      const logMsg = `${team.name} raised valuation to ₹${nextAmount.toLocaleString('en-IN')} (+₹${(nextAmount - currentBid).toLocaleString('en-IN')}).`;
+      const logMsg = `${team.name} raised bid to ${formatPointsWithLabel(nextAmount)} (+${formatPointsWithLabel(nextAmount - currentBid)}).`;
       setLastActionMessage(logMsg);
-      addAuditLog('BID', `BID: ₹${nextAmount.toLocaleString('en-IN')}`, logMsg, team.id);
+      addAuditLog('BID', `BID: ${formatPointsWithLabel(nextAmount)}`, logMsg, team.id);
 
-      return { success: true, message: `Bid of ₹${nextAmount.toLocaleString('en-IN')} accepted for ${team.name}!` };
+      return { success: true, message: `Bid of ${formatPointsWithLabel(nextAmount)} accepted for ${team.name}!` };
     },
     [activePlayer, currentBid, highestBidderTeamId, teams, validateBid, addAuditLog]
   );
@@ -289,7 +366,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (stage: 'GOING ONCE' | 'GOING TWICE' | 'FINAL CALL') => {
       const mult = stage === 'GOING ONCE' ? 1 : stage === 'GOING TWICE' ? 1.25 : 1.5;
       sound.playWarning(mult);
-      const msg = `AUCTION GAVEL CALL: ${stage} for Lot #${activePlayer?.lotNumber} (${activePlayer?.name}) at ₹${currentBid.toLocaleString('en-IN')}!`;
+      const msg = `AUCTION GAVEL CALL: ${stage} for Lot #${activePlayer?.lotNumber} (${activePlayer?.name}) at ${formatPointsWithLabel(currentBid)}!`;
       setLastActionMessage(msg);
       addAuditLog('WARNING', stage, msg, highestBidderTeamId || undefined);
     },
@@ -356,7 +433,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Confetti fallback
     }
 
-    const soldMsg = `HAMMER DOWN! Lot #${activePlayer.lotNumber} ${activePlayer.name} SOLD to ${winningTeam.name} for ₹${currentBid.toLocaleString('en-IN')}!`;
+    const soldMsg = `HAMMER DOWN! Lot #${activePlayer.lotNumber} ${activePlayer.name} SOLD to ${winningTeam.name} for ${formatPointsWithLabel(currentBid)}!`;
     setLastActionMessage(soldMsg);
     addAuditLog('SOLD', `SOLD: LOT #${activePlayer.lotNumber}`, soldMsg, winningTeam.id);
   }, [activePlayer, currentBid, highestBidderTeamId, teams, addAuditLog]);
@@ -366,7 +443,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!activePlayer) return;
 
     setPlayers((prev) =>
-      prev.map((p) => (p.id === activePlayer.id ? { ...p, status: 'UNSOLD' } : p))
+      prev.map((p) => (p.id === activePlayer.id ? { ...p, status: 'UNSOLD', soldToTeamId: null, soldPrice: null } : p))
     );
 
     setTimerRunning(false);
@@ -374,46 +451,112 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     sound.playUnsold();
 
-    const unsoldMsg = `Lot #${activePlayer.lotNumber} ${activePlayer.name} passed as UNSOLD at base ₹${activePlayer.basePrice.toLocaleString('en-IN')}.`;
+    const unsoldMsg = `Lot #${activePlayer.lotNumber} ${activePlayer.name} passed as UNSOLD at Base Points: ${formatPointsWithLabel(activePlayer.basePrice)}.`;
     setLastActionMessage(unsoldMsg);
     addAuditLog('UNSOLD', `UNSOLD: LOT #${activePlayer.lotNumber}`, unsoldMsg);
   }, [activePlayer, addAuditLog]);
 
-  // Advance to Next Lot
-  const advanceNextLot = useCallback(() => {
-    // Find next UPCOMING player index
-    const nextIdx = players.findIndex((p, idx) => idx > activePlayerIndex && p.status === 'UPCOMING');
-    const targetIdx = nextIdx !== -1 ? nextIdx : players.findIndex((p) => p.status === 'UPCOMING');
+  // Advance to Next Lot from the SELECTED CATEGORY in ASCENDING BASE PRICE ORDER
+  const advanceNextLot = useCallback((): { success: boolean; message: string } => {
+    // Find eligible UPCOMING players from selectedCategory, sorted by base price ascending
+    const eligible = players
+      .filter((p) => p.role === selectedCategory && p.status === 'UPCOMING')
+      .sort((a, b) => a.basePrice - b.basePrice || a.lotNumber - b.lotNumber);
 
-    if (targetIdx !== -1) {
-      const nextP = players[targetIdx];
+    if (eligible.length === 0) {
+      const msg = `No available ${selectedCategory}s remaining in pool. Please select another category.`;
+      setLastActionMessage(msg);
+      addAuditLog('WARNING', 'NEXT LOT UNAVAILABLE', msg);
+      return { success: false, message: msg };
+    }
+
+    const nextP = eligible[0];
+    const targetIdx = players.findIndex((p) => p.id === nextP.id);
+    if (targetIdx === -1) {
+      return { success: false, message: 'Player index error' };
+    }
+
+    // Update statuses: set nextP to IN_RING.
+    // If previous active player was IN_RING and neither sold nor unsold, mark them UNSOLD to avoid duplicate in-ring.
+    setPlayers((prev) =>
+      prev.map((p, idx) => {
+        if (idx === targetIdx) {
+          return { ...p, status: 'IN_RING' };
+        }
+        if (p.status === 'IN_RING' && p.id !== nextP.id) {
+          return { ...p, status: 'UNSOLD' };
+        }
+        return p;
+      })
+    );
+
+    setActivePlayerIndex(targetIdx);
+    setCurrentBid(nextP.basePrice);
+    setHighestBidderTeamId(null);
+    setTimerSeconds(DEFAULT_TIMER);
+    setTimerRunning(true);
+    setIsPaused(false);
+
+    sound.playBidClick();
+
+    const introMsg = `LOT #${nextP.lotNumber} ${nextP.name} (${nextP.role}) introduced to auction stage at Base Points: ${formatPointsWithLabel(nextP.basePrice)}.`;
+    setLastActionMessage(introMsg);
+    addAuditLog('START', `LOT #${nextP.lotNumber} OPENED`, introMsg);
+
+    return { success: true, message: introMsg };
+  }, [players, selectedCategory, addAuditLog]);
+
+  // Load a specific player into the auction ring
+  const loadPlayerToRing = useCallback(
+    (playerId: string): { success: boolean; message: string } => {
+      const targetIdx = players.findIndex((p) => p.id === playerId);
+      if (targetIdx === -1) return { success: false, message: 'Player not found.' };
+      const targetP = players[targetIdx];
+
+      if (targetP.status === 'SOLD') {
+        return { success: false, message: 'Cannot load a player who is already SOLD.' };
+      }
+      if (targetP.status === 'IN_RING') {
+        return { success: false, message: 'Player is already currently active in the auction ring.' };
+      }
+
+      setPlayers((prev) =>
+        prev.map((p, idx) => {
+          if (idx === targetIdx) {
+            return { ...p, status: 'IN_RING' };
+          }
+          if (p.status === 'IN_RING' && p.id !== targetP.id) {
+            return { ...p, status: 'UNSOLD' };
+          }
+          return p;
+        })
+      );
+
+      setSelectedCategory(targetP.role);
       setActivePlayerIndex(targetIdx);
-      setCurrentBid(nextP.basePrice);
+      setCurrentBid(targetP.basePrice);
       setHighestBidderTeamId(null);
       setTimerSeconds(DEFAULT_TIMER);
       setTimerRunning(true);
       setIsPaused(false);
 
-      setPlayers((prev) =>
-        prev.map((p, idx) => (idx === targetIdx ? { ...p, status: 'IN_RING' } : p))
-      );
-
       sound.playBidClick();
 
-      const introMsg = `LOT #${nextP.lotNumber} ${nextP.name} (${nextP.role}) introduced to auction stage at base price ₹${nextP.basePrice.toLocaleString('en-IN')}.`;
-      setLastActionMessage(introMsg);
-      addAuditLog('START', `LOT #${nextP.lotNumber} OPENED`, introMsg);
-    } else {
-      setLastActionMessage('All player lots in pool have been completed.');
-      addAuditLog('SYSTEM', 'AUCTION COMPLETED', 'All lots in player catalogue have concluded.');
-    }
-  }, [activePlayerIndex, players, addAuditLog]);
+      const msg = `LOT #${targetP.lotNumber} ${targetP.name} (${targetP.role}) loaded to ring at Base Points: ${formatPointsWithLabel(targetP.basePrice)}.`;
+      setLastActionMessage(msg);
+      addAuditLog('START', `LOT #${targetP.lotNumber} LOADED`, msg);
 
-  // Go to specific lot
+      return { success: true, message: msg };
+    },
+    [players, addAuditLog]
+  );
+
+  // Go to specific lot index
   const goToLot = useCallback(
     (index: number) => {
       if (index < 0 || index >= players.length) return;
       const targetP = players[index];
+      setSelectedCategory(targetP.role);
       setActivePlayerIndex(index);
       setCurrentBid(targetP.soldPrice || targetP.basePrice);
       setHighestBidderTeamId(targetP.soldToTeamId || null);
@@ -432,11 +575,12 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [players, addAuditLog]
   );
 
-  // Reset Demo
+  // Reset Demo to fresh initial state
   const resetDemo = useCallback(() => {
     setPlayers(INITIAL_PLAYERS);
     setTeams(INITIAL_TEAMS);
-    setActivePlayerIndex(3); // Lot #04 Arjun Shah
+    setSelectedCategory('All-Rounder');
+    setActivePlayerIndex(15); // Lot #04 Arjun Shah (index 15)
     setCurrentBid(240000);
     setHighestBidderTeamId('strikers');
     setBidRecords(INITIAL_BIDS_LOT4);
@@ -449,8 +593,8 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsUnsoldModalOpen(false);
 
     sound.playBidClick();
-    setLastActionMessage('DEMO ENVIRONMENT RESET: Sample rosters, telemetry, and balances restored.');
-    addAuditLog('RESET', 'DEMO RESET COMPLETE', 'All franchise purses, rosters, and lot states reverted to default state.');
+    setLastActionMessage('DEMO ENVIRONMENT RESET: Sample rosters, telemetry, and points balances restored.');
+    addAuditLog('RESET', 'DEMO RESET COMPLETE', 'All franchise points budgets, rosters, and lot states reverted to default state.');
   }, [addAuditLog]);
 
   // Sound Controls
@@ -489,6 +633,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isPaused,
         viewMode,
         selectedTeamId,
+        selectedCategory,
         soundEnabled,
         masterVolume,
         lastActionMessage,
@@ -500,6 +645,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         completedLotsCount,
         setViewMode,
         setSelectedTeamId,
+        setSelectedCategory,
         placeBid,
         placeIncrementBid,
         startTimer,
@@ -512,6 +658,7 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         confirmSold,
         confirmUnsold,
         advanceNextLot,
+        loadPlayerToRing,
         goToLot,
         resetDemo,
         openSoldModal,
@@ -523,6 +670,12 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         toggleSound,
         setMasterVolume,
         validateBid,
+        getCategoryEligiblePlayers,
+        getCategoryAllPlayers,
+        inspectPlayer,
+        isProfileModalOpen,
+        openPlayerProfile,
+        closePlayerProfile,
       }}
     >
       {children}

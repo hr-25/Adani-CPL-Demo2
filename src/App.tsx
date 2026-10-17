@@ -4,11 +4,12 @@ import { Header } from './components/Header';
 import { AdminConsole } from './components/views/AdminConsole';
 import { TeamManager } from './components/views/TeamManager';
 import { ProjectorDisplay } from './components/views/ProjectorDisplay';
-import { LiveAuctionRoom } from './components/views/LiveAuctionRoom';
+import { TeamSquads } from './components/views/TeamSquads';
 import { PlayerPool } from './components/views/PlayerPool';
 import { SoldConfirmModal } from './components/modals/SoldConfirmModal';
 import { UnsoldConfirmModal } from './components/modals/UnsoldConfirmModal';
 import { ResetConfirmModal } from './components/modals/ResetConfirmModal';
+import { PlayerProfileModal } from './components/modals/PlayerProfileModal';
 
 export const App: React.FC = () => {
   const { viewMode } = useAuction();
@@ -23,7 +24,7 @@ export const App: React.FC = () => {
         {viewMode === 'admin' && <AdminConsole />}
         {viewMode === 'team' && <TeamManager />}
         {viewMode === 'projector' && <ProjectorDisplay />}
-        {viewMode === 'live-room' && <LiveAuctionRoom />}
+        {viewMode === 'squads' && <TeamSquads />}
         {viewMode === 'pool' && <PlayerPool />}
       </main>
 
@@ -31,6 +32,7 @@ export const App: React.FC = () => {
       <SoldConfirmModal />
       <UnsoldConfirmModal />
       <ResetConfirmModal />
+      <PlayerProfileModal />
 
       {/* Corporate Presentation Footer */}
       <footer className="w-full bg-[#0A0E15] py-3.5 px-4 lg:px-8 border-t border-white/5 text-xs font-mono text-slate-400">

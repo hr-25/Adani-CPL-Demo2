@@ -14,6 +14,7 @@ import {
   SkipForward,
 } from 'lucide-react';
 import { useAuction } from '../../context/AuctionContext';
+import { formatPoints } from '../../utils/formatters';
 
 export const LiveAuctionRoom: React.FC = () => {
   const {
@@ -80,7 +81,7 @@ export const LiveAuctionRoom: React.FC = () => {
 
               <div className="pt-2 flex flex-wrap items-center gap-3">
                 <span className="font-mono text-xs text-slate-300 bg-[#151D2E] px-3 py-1 rounded-lg border border-white/5">
-                  Base: <strong>₹{activePlayer?.basePrice.toLocaleString('en-IN')}</strong>
+                  Base Points: <strong>{formatPoints(activePlayer?.basePrice)} Points</strong>
                 </span>
                 <span className="font-mono text-xs text-slate-300 bg-[#151D2E] px-3 py-1 rounded-lg border border-white/5">
                   Experience: <strong>{activePlayer?.experience}</strong>
@@ -95,9 +96,9 @@ export const LiveAuctionRoom: React.FC = () => {
               <span className="font-mono text-xs text-slate-400 font-bold uppercase tracking-wider">
                 CURRENT HIGHEST BID
               </span>
-              <div className="font-mono text-5xl sm:text-6xl text-[#00D2FF] font-black tracking-tight my-2 flex items-baseline">
-                <span className="text-3xl text-cyan-400 mr-1">₹</span>
-                <span>{currentBid.toLocaleString('en-IN')}</span>
+              <div className="font-mono text-4xl sm:text-5xl text-[#00D2FF] font-black tracking-tight my-2 flex items-baseline gap-2">
+                <span>{formatPoints(currentBid)}</span>
+                <span className="text-xl sm:text-2xl text-cyan-400 font-bold">Points</span>
               </div>
               <div className="flex items-center gap-2 pt-1 font-mono text-xs text-slate-300">
                 <span>HELD BY:</span>
@@ -194,7 +195,7 @@ export const LiveAuctionRoom: React.FC = () => {
 
                       <div className="text-right font-mono">
                         <span className="font-bold text-white text-sm">
-                          ₹{t.remainingPurse.toLocaleString('en-IN')}
+                          {formatPoints(t.remainingPurse)} Points
                         </span>
                         <span className="block text-[10px] text-slate-400">Squad: {t.squadCount}/11</span>
                       </div>
@@ -210,7 +211,7 @@ export const LiveAuctionRoom: React.FC = () => {
                             : 'bg-white/10 hover:bg-[#00D2FF] hover:text-[#003543] text-white'
                         }`}
                       >
-                        {isLeading ? 'HOLDING LEAD' : '+₹10k BID'}
+                        {isLeading ? 'HOLDING LEAD' : '+10k Pts'}
                       </button>
                       <button
                         onClick={() => placeIncrementBid(25000, t.id)}
@@ -221,7 +222,7 @@ export const LiveAuctionRoom: React.FC = () => {
                             : 'bg-white/10 hover:bg-[#00D2FF] hover:text-[#003543] text-white'
                         }`}
                       >
-                        +₹25k BID
+                        +25k Pts
                       </button>
                     </div>
                   </div>

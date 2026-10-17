@@ -14,6 +14,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useAuction } from '../../context/AuctionContext';
+import { formatPoints, formatPointsWithLabel } from '../../utils/formatters';
 
 export const ProjectorDisplay: React.FC = () => {
   const {
@@ -24,6 +25,7 @@ export const ProjectorDisplay: React.FC = () => {
     teams,
     players,
     nextPlayerOnDeck,
+    openPlayerProfile,
   } = useAuction();
 
   const handleToggleFullScreen = () => {
@@ -93,7 +95,7 @@ export const ProjectorDisplay: React.FC = () => {
                   <span>→</span>
                   <span className="font-bold text-cyan-400">{wonTeam ? wonTeam.shortName : 'UNSOLD'}</span>
                   {r.soldPrice && (
-                    <span className="text-amber-400 font-bold">₹{r.soldPrice.toLocaleString('en-IN')}</span>
+                    <span className="text-amber-400 font-bold">{formatPoints(r.soldPrice)} Points</span>
                   )}
                   {i < recentResults.length - 1 && <span className="text-slate-600 mx-2">•</span>}
                 </div>
@@ -108,22 +110,37 @@ export const ProjectorDisplay: React.FC = () => {
             {/* Left Zone: Cinematic Player Spotlight (lg:col-span-5) */}
             <div className="lg:col-span-5 bg-[#070B12]/90 p-6 md:p-8 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-white/10 relative">
               {/* Category Chips */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-400 font-heading text-sm uppercase tracking-wider font-bold">
-                  LOT #{activePlayer?.lotNumber.toString().padStart(2, '0') || '04'} • {activePlayer?.tier?.toUpperCase() || 'MARQUEE SET'}
-                </span>
-                <span className="px-4 py-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-[#00D2FF] font-heading text-sm uppercase tracking-wider font-bold">
-                  BASE: ₹{activePlayer?.basePrice.toLocaleString('en-IN') || '50,000'}
-                </span>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-400 font-heading text-sm uppercase tracking-wider font-bold">
+                    LOT #{activePlayer?.lotNumber.toString().padStart(2, '0') || '04'} • {activePlayer?.tier?.toUpperCase() || 'MARQUEE SET'}
+                  </span>
+                  <span className="px-4 py-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-[#00D2FF] font-heading text-sm uppercase tracking-wider font-bold">
+                    BASE POINTS: {formatPoints(activePlayer?.basePrice || 50000)} Points
+                  </span>
+                </div>
+
+                {activePlayer && (
+                  <button
+                    onClick={() => openPlayerProfile(activePlayer)}
+                    className="px-3 py-1.5 rounded-xl bg-[#151D2E] hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                  >
+                    <span>VIEW CPL DOSSIER</span>
+                  </button>
+                )}
               </div>
 
               {/* Player Portrait & Hero Title */}
               <div className="my-6 flex flex-col xl:flex-row items-center xl:items-end gap-6">
-                <div className="relative w-52 h-64 sm:w-56 sm:h-72 rounded-2xl overflow-hidden bg-slate-800 shadow-[0_15px_40px_rgba(0,0,0,0.8)] ring-2 ring-cyan-500/30 shrink-0">
+                <div
+                  onClick={() => activePlayer && openPlayerProfile(activePlayer)}
+                  className="relative w-52 h-64 sm:w-56 sm:h-72 rounded-2xl overflow-hidden bg-slate-800 shadow-[0_15px_40px_rgba(0,0,0,0.8)] ring-2 ring-cyan-500/30 shrink-0 cursor-pointer group hover:ring-cyan-400 transition-all"
+                  title="Click to view full player profile dossier"
+                >
                   <img
                     src={activePlayer?.image}
                     alt={activePlayer?.name}
-                    className="w-full h-full object-cover object-top"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent"></div>
                   <div className="absolute bottom-3 left-3 right-3 py-1 bg-[#0A0E15]/90 backdrop-blur-md rounded-lg text-center border border-cyan-500/30">
@@ -208,16 +225,14 @@ export const ProjectorDisplay: React.FC = () => {
                       CURRENT HIGHEST BID
                     </span>
                   </div>
-                  <div className="flex items-baseline flex-nowrap">
-                    <span className="font-mono text-4xl sm:text-5xl text-cyan-400 font-bold mr-2 leading-none">
-                      ₹
-                    </span>
+                  <div className="flex items-baseline flex-nowrap gap-2">
                     <span className="font-mono text-5xl sm:text-6xl xl:text-7xl text-white font-black tracking-tighter drop-shadow-[0_0_40px_rgba(0,210,255,0.45)] leading-none truncate">
-                      {currentBid.toLocaleString('en-IN')}
+                      {formatPoints(currentBid)}
                     </span>
+                    <span className="font-mono text-2xl sm:text-3xl text-cyan-400 font-bold">Points</span>
                   </div>
                   <p className="font-mono text-xs sm:text-sm text-slate-400 pt-1">
-                    Standard Minimum Step: <strong className="text-white">+₹10,000 / +₹20,000</strong>
+                    Minimum Bid Increment: <strong className="text-white">+{formatPoints(10000)} / +{formatPoints(20000)} Points</strong>
                   </p>
                 </div>
 
@@ -271,16 +286,16 @@ export const ProjectorDisplay: React.FC = () => {
           </div>
         </div>
 
-        {/* 4 FRANCHISE PURSE TELEMETRY CARDS (BOTTOM) */}
+        {/* 4 FRANCHISE POINTS BUDGET TELEMETRY CARDS (BOTTOM) */}
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-[#00D2FF]" />
               <span className="font-heading text-sm text-white font-bold uppercase tracking-widest">
-                FRANCHISE PURSE & SQUAD CAPACITIES
+                TEAM POINTS BUDGETS & SQUAD CAPACITIES
               </span>
             </div>
-            <span className="font-mono text-xs text-slate-400">TOTAL CAP: ₹10,00,000 PER TEAM</span>
+            <span className="font-mono text-xs text-slate-400">TEAM POINTS BUDGET: 1,000,000 POINTS PER TEAM</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -326,9 +341,9 @@ export const ProjectorDisplay: React.FC = () => {
 
                   <div className="space-y-2">
                     <div className="flex justify-between items-baseline">
-                      <span className="font-mono text-xs text-slate-400 font-semibold">REMAINING PURSE</span>
+                      <span className="font-mono text-xs text-slate-400 font-semibold">POINTS REMAINING</span>
                       <span className="font-mono text-xl text-white font-black">
-                        ₹{t.remainingPurse.toLocaleString('en-IN')}
+                        {formatPoints(t.remainingPurse)}
                       </span>
                     </div>
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Gavel, AlertCircle, Volume2, ShieldCheck, X } from 'lucide-react';
 import { useAuction } from '../../context/AuctionContext';
+import { formatPoints } from '../../utils/formatters';
 
 export const SoldConfirmModal: React.FC = () => {
   const { isSoldModalOpen, closeSoldModal, confirmSold, activePlayer, currentBid, highestBidder } = useAuction();
@@ -52,9 +53,9 @@ export const SoldConfirmModal: React.FC = () => {
           </div>
 
           <div className="flex justify-between items-center text-sm text-slate-400 pt-2 border-t border-white/10">
-            <span>Hammer Price:</span>
+            <span>Final Sale Points:</span>
             <span className="text-[#F59E0B] font-mono text-2xl font-bold tracking-tight">
-              ₹{currentBid.toLocaleString('en-IN')}
+              {formatPoints(currentBid)} Points
             </span>
           </div>
         </div>
@@ -66,8 +67,8 @@ export const SoldConfirmModal: React.FC = () => {
 
         <p className="text-xs text-slate-400 leading-relaxed">
           Executing this command will instantly lock this lot into the corporate ledger, deduct{' '}
-          <strong className="text-white">₹{currentBid.toLocaleString('en-IN')}</strong> from{' '}
-          <strong className="text-cyan-300">{highestBidder.name}</strong>'s purse, halt the auction clock, and activate arena celebratory audio.
+          <strong className="text-white">{formatPoints(currentBid)} Points</strong> from{' '}
+          <strong className="text-cyan-300">{highestBidder.name}</strong>'s points balance, halt the auction clock, and activate arena celebratory audio.
         </p>
 
         <div className="flex items-center gap-3 justify-end pt-2">

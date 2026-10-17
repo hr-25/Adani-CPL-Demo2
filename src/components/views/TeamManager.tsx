@@ -14,6 +14,8 @@ import {
   Info,
 } from 'lucide-react';
 import { useAuction } from '../../context/AuctionContext';
+import { formatPoints, formatPointsWithLabel } from '../../utils/formatters';
+import { sound } from '../../utils/soundEngine';
 
 export const TeamManager: React.FC = () => {
   const {
@@ -29,6 +31,7 @@ export const TeamManager: React.FC = () => {
     placeIncrementBid,
     timerSeconds,
     validateBid,
+    openPlayerProfile,
   } = useAuction();
 
   const currentTeam = teams.find((t) => t.id === selectedTeamId) || teams[0];
@@ -43,7 +46,18 @@ export const TeamManager: React.FC = () => {
   // Remaining slots & reserve check
   const remainingSlots = currentTeam.maxSquad - currentTeam.squadCount - 1;
   const reserveNeeded = Math.max(0, remainingSlots) * currentTeam.minReservePerSlot;
+  const maxSafeBid = Math.max(0, currentTeam.remainingPurse - reserveNeeded);
   const purseAfterNextBid = currentTeam.remainingPurse - nextTargetBid;
+
+  // Custom Bidding State
+  const [customBidInput, setCustomBidInput] = useState<string>('');
+  const [bidFeedback, setBidFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Dynamic preview for custom bid
+  const customBidParsed = parseInt(customBidInput.trim(), 10);
+  const isCustomInputValidNum = !isNaN(customBidParsed) && customBidParsed > 0;
+  const purseAfterCustomBid = isCustomInputValidNum ? currentTeam.remainingPurse - customBidParsed : null;
+  const isCustomBidOverSafeMax = isCustomInputValidNum && customBidParsed > maxSafeBid;
 
   // Players acquired by this team
   const mySquadPlayers = players.filter((p) => p.soldToTeamId === currentTeam.id);
@@ -54,10 +68,90 @@ export const TeamManager: React.FC = () => {
     .slice(-5);
 
   const handleBidClick = () => {
+    setBidFeedback(null);
     if (!canPlaceBid) return;
     const res = placeBid(currentTeam.id, nextTargetBid);
-    if (!res.success) {
-      alert(res.message);
+    if (res.success) {
+      setBidFeedback({
+        type: 'success',
+        message: `✓ Quick bid of ${formatPointsWithLabel(nextTargetBid)} placed for ${currentTeam.name}!`,
+      });
+    } else {
+      setBidFeedback({
+        type: 'error',
+        message: res.message,
+      });
+      sound.playWarning();
+    }
+  };
+
+  const handleApplyCustomBid = () => {
+    setBidFeedback(null);
+
+    if (!activePlayer || activePlayer.status !== 'IN_RING') {
+      const msg = 'No active player is currently under the hammer in the auction ring.';
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    if (!customBidInput || customBidInput.trim() === '') {
+      const msg = 'Please enter a valid bid amount in Points.';
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    const val = parseInt(customBidInput.trim(), 10);
+    if (isNaN(val) || val <= 0) {
+      const msg = 'Invalid bid amount. Points must be a positive number.';
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    if (val <= currentBid) {
+      const msg = `Custom bid of ${formatPointsWithLabel(val)} must be higher than the Current Highest Bid (${formatPointsWithLabel(currentBid)}).`;
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    const minIncrement = 10000;
+    if (val - currentBid < minIncrement) {
+      const msg = `Custom bid must follow the minimum bid increment of at least ${formatPointsWithLabel(minIncrement)} above Current Highest Bid (Minimum required: ${formatPointsWithLabel(currentBid + minIncrement)}).`;
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    if (val > currentTeam.remainingPurse) {
+      const msg = `Custom bid of ${formatPointsWithLabel(val)} exceeds ${currentTeam.shortName}'s available Points Balance (${formatPointsWithLabel(currentTeam.remainingPurse)}).`;
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    if (val > maxSafeBid) {
+      const msg = `Reserve Rule Violation: Minimum ${formatPointsWithLabel(reserveNeeded)} must be preserved for ${remainingSlots} remaining squad slots. Maximum safe bid for ${currentTeam.shortName} is ${formatPointsWithLabel(maxSafeBid)}.`;
+      setBidFeedback({ type: 'error', message: msg });
+      sound.playWarning();
+      return;
+    }
+
+    const res = placeBid(currentTeam.id, val);
+    if (res.success) {
+      setCustomBidInput('');
+      setBidFeedback({
+        type: 'success',
+        message: `✓ Custom bid of ${formatPointsWithLabel(val)} confirmed for ${currentTeam.name}! You now hold the highest bid.`,
+      });
+    } else {
+      setBidFeedback({
+        type: 'error',
+        message: res.message,
+      });
+      sound.playWarning();
     }
   };
 
@@ -79,7 +173,11 @@ export const TeamManager: React.FC = () => {
             return (
               <button
                 key={team.id}
-                onClick={() => setSelectedTeamId(team.id)}
+                onClick={() => {
+                  setSelectedTeamId(team.id);
+                  setBidFeedback(null);
+                  setCustomBidInput('');
+                }}
                 className={`px-3.5 py-2 rounded-xl font-heading text-xs font-bold tracking-wider transition-all flex items-center gap-2 cursor-pointer border ${
                   isSelected
                     ? 'bg-[#151D2E] text-white shadow-lg ring-2'
@@ -140,22 +238,22 @@ export const TeamManager: React.FC = () => {
             </div>
           </div>
 
-          {/* 4 Financial Meters */}
+          {/* 4 Points Meters */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-4 bg-[#151D2E]/80 p-4 rounded-xl border border-white/5 relative z-10">
             <div className="flex flex-col">
-              <span className="font-mono text-[10px] text-slate-400 uppercase">PURSE REMAINING</span>
+              <span className="font-mono text-[10px] text-slate-400 uppercase">POINTS REMAINING</span>
               <div className="font-mono text-2xl font-bold text-white mt-1">
-                ₹{currentTeam.remainingPurse.toLocaleString('en-IN')}
+                {formatPoints(currentTeam.remainingPurse)}
               </div>
               <span className="text-[11px] text-cyan-400 font-mono mt-0.5">
-                Starting Cap: ₹{(currentTeam.startingPurse / 100000).toFixed(1)}L
+                Starting Points: {formatPoints(currentTeam.startingPurse)} Points
               </span>
             </div>
 
             <div className="flex flex-col">
-              <span className="font-mono text-[10px] text-slate-400 uppercase">TOTAL SPENT</span>
+              <span className="font-mono text-[10px] text-slate-400 uppercase">POINTS SPENT</span>
               <div className="font-mono text-2xl font-bold text-amber-400 mt-1">
-                ₹{(currentTeam.startingPurse - currentTeam.remainingPurse).toLocaleString('en-IN')}
+                {formatPoints(currentTeam.startingPurse - currentTeam.remainingPurse)}
               </div>
               <span className="text-[11px] text-slate-500 font-mono mt-0.5">Verified Ledger</span>
             </div>
@@ -172,9 +270,9 @@ export const TeamManager: React.FC = () => {
             </div>
 
             <div className="flex flex-col">
-              <span className="font-mono text-[10px] text-slate-400 uppercase">MAX SAFE BID</span>
+              <span className="font-mono text-[10px] text-slate-400 uppercase">MAXIMUM SAFE BID</span>
               <div className="font-mono text-2xl font-bold text-cyan-400 mt-1">
-                ₹{Math.max(0, currentTeam.remainingPurse - reserveNeeded).toLocaleString('en-IN')}
+                {formatPoints(Math.max(0, currentTeam.remainingPurse - reserveNeeded))}
               </div>
               <span className="text-[11px] text-slate-500 font-mono mt-0.5">Reserve Guarded</span>
             </div>
@@ -185,8 +283,8 @@ export const TeamManager: React.FC = () => {
             <div className="flex items-center gap-2">
               <Info className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
-                <strong className="text-white">Reserve Requirement:</strong> Min. budget reserved for{' '}
-                {11 - currentTeam.squadCount} remaining squad slots (₹20k base). Budget guard is active.
+                <strong className="text-white">Reserve Requirement:</strong> Min. points reserved for{' '}
+                {11 - currentTeam.squadCount} remaining squad slots ({formatPoints(currentTeam.minReservePerSlot)} Points base). Points guard is active.
               </span>
             </div>
             <span className="font-mono text-[10px] text-cyan-400 uppercase font-bold shrink-0">
@@ -248,9 +346,13 @@ export const TeamManager: React.FC = () => {
               </div>
 
               {/* Player Portrait & Card */}
-              <div className="bg-[#151D2E] p-4 rounded-2xl border border-white/5 mb-4 flex flex-col sm:flex-row items-center gap-4">
+              <div
+                onClick={() => openPlayerProfile(activePlayer)}
+                className="bg-[#151D2E] p-4 rounded-2xl border border-white/5 mb-4 flex flex-col sm:flex-row items-center gap-4 cursor-pointer hover:border-cyan-500/30 transition-all group"
+                title="Click to view full player profile"
+              >
                 <div className="relative w-28 h-32 rounded-xl overflow-hidden bg-slate-800 shrink-0 border border-white/10 shadow-md">
-                  <img src={activePlayer.image} alt={activePlayer.name} className="w-full h-full object-cover" />
+                  <img src={activePlayer.image} alt={activePlayer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   <span className="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white">
                     LOT #{activePlayer.lotNumber}
                   </span>
@@ -260,7 +362,7 @@ export const TeamManager: React.FC = () => {
                   <span className="inline-block px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] font-bold mb-1">
                     {activePlayer.role.toUpperCase()}
                   </span>
-                  <h3 className="font-heading text-xl font-bold text-white truncate">{activePlayer.name}</h3>
+                  <h3 className="font-heading text-xl font-bold text-white truncate group-hover:text-cyan-300 transition-colors">{activePlayer.name}</h3>
                   <p className="font-mono text-xs text-[#F59E0B] font-semibold">{activePlayer.specialism}</p>
                   <p className="text-xs text-slate-400 mt-1">{activePlayer.cluster}</p>
                   <p className="text-[11px] text-slate-500 truncate">{activePlayer.department}</p>
@@ -282,8 +384,8 @@ export const TeamManager: React.FC = () => {
                   <span className="text-white font-semibold">{activePlayer.experience}</span>
                 </div>
                 <div className="flex justify-between p-2.5 rounded-xl bg-[#151D2E] border border-white/5">
-                  <span className="text-slate-400">Base Opening Valuation</span>
-                  <span className="text-cyan-400 font-bold">₹{activePlayer.basePrice.toLocaleString('en-IN')}</span>
+                  <span className="text-slate-400">Base Points</span>
+                  <span className="text-cyan-400 font-bold">{formatPoints(activePlayer.basePrice)} Points</span>
                 </div>
               </div>
             </div>
@@ -301,11 +403,11 @@ export const TeamManager: React.FC = () => {
               <div className="md:col-span-7 bg-[#151D2E] border border-white/10 p-5 rounded-2xl shadow-inner flex flex-col justify-between">
                 <div>
                   <span className="font-mono text-[11px] text-slate-400 font-bold uppercase tracking-wider">
-                    CURRENT ACTIVE BID
+                    CURRENT HIGHEST BID
                   </span>
-                  <div className="font-mono text-4xl sm:text-5xl text-white font-black tracking-tight my-1 flex items-baseline">
-                    <span className="text-3xl text-cyan-400 mr-1">₹</span>
-                    <span>{currentBid.toLocaleString('en-IN')}</span>
+                  <div className="font-mono text-3xl sm:text-4xl text-white font-black tracking-tight my-1 flex items-baseline gap-2">
+                    <span>{formatPoints(currentBid)}</span>
+                    <span className="text-xl sm:text-2xl text-cyan-400 font-bold">Points</span>
                   </div>
                 </div>
 
@@ -383,7 +485,7 @@ export const TeamManager: React.FC = () => {
                   <p className="font-mono text-xs opacity-80 mt-0.5">
                     {isWinningBidder
                       ? `Your paddle (${currentTeam.paddleNumber}) leads Lot #${activePlayer?.lotNumber}. Awaiting counters.`
-                      : `Target bid to regain lead: ₹${nextTargetBid.toLocaleString('en-IN')}`}
+                      : `Target bid to regain lead: ${formatPoints(nextTargetBid)} Points`}
                   </p>
                 </div>
               </div>
@@ -407,7 +509,7 @@ export const TeamManager: React.FC = () => {
                     YOU HOLD THE HIGHEST BID
                   </h4>
                   <p className="font-mono text-sm text-white mt-1">
-                    Current Bid: <span className="text-amber-400 font-bold">₹{currentBid.toLocaleString('en-IN')}</span>
+                    Current Bid: <span className="text-amber-400 font-bold">{formatPoints(currentBid)} Points</span>
                   </p>
                   <p className="font-mono text-xs text-slate-400 mt-2">
                     Waiting for another franchise to raise the paddle before you can counter...
@@ -426,27 +528,209 @@ export const TeamManager: React.FC = () => {
                 >
                   <div className="flex items-center gap-2">
                     <Gavel className="w-6 h-6" />
-                    <span>PLACE BID: ₹{nextTargetBid.toLocaleString('en-IN')}</span>
+                    <span>PLACE BID: {formatPoints(nextTargetBid)} Points</span>
                   </div>
                   <span className="font-mono text-xs font-bold tracking-normal opacity-90">
                     {canPlaceBid
-                      ? `RAISE VALUATION (+₹${nextBidIncrement.toLocaleString('en-IN')}) VIA PADDLE ${currentTeam.paddleNumber}`
-                      : validation.reason || 'INSUFFICIENT PURSE / SQUAD RESERVE'}
+                      ? `RAISE BID (+${formatPoints(nextBidIncrement)} Points) VIA PADDLE ${currentTeam.paddleNumber}`
+                      : validation.reason || 'INSUFFICIENT POINTS BALANCE / SQUAD RESERVE'}
                   </span>
                 </button>
               )}
 
-              {/* Wallet impact preview */}
+              {/* Points impact preview */}
               <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-[#151D2E] font-mono text-xs text-slate-400 border border-white/5">
-                <span>Purse after this bid:</span>
+                <span>Points Remaining after this bid:</span>
                 <div className="flex items-center gap-2">
                   <span className="text-white font-bold">
-                    ₹{Math.max(0, purseAfterNextBid).toLocaleString('en-IN')} remaining
+                    {formatPoints(Math.max(0, purseAfterNextBid))} Points
                   </span>
                   <span className="text-emerald-400 font-semibold text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded">
                     ● SQUAD RESERVE COMPLIANT
                   </span>
                 </div>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* CUSTOM POINTS BID SECTION */}
+            {/* ========================================================= */}
+            <div className="mt-2 pt-4 border-t border-white/10 flex flex-col gap-3.5">
+              {/* Section Title Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
+                  <h4 className="font-heading text-sm font-bold text-white uppercase tracking-wider">
+                    CUSTOM POINTS BID
+                  </h4>
+                </div>
+                <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/40 border border-cyan-500/20 px-2 py-0.5 rounded">
+                  DIRECT TOTAL ENTRY • PADDLE {currentTeam.paddleNumber}
+                </span>
+              </div>
+
+              {/* Telemetry Strip: Current Highest Bid, Points Balance, Min Increment, Max Safe Bid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
+                <div className="bg-[#151D2E] p-2.5 rounded-xl border border-white/5">
+                  <span className="text-slate-400 block text-[9px] uppercase tracking-wider">CURRENT HIGHEST BID</span>
+                  <span className="text-amber-400 font-bold text-sm truncate block mt-0.5">
+                    {formatPoints(currentBid)} Points
+                  </span>
+                </div>
+
+                <div className="bg-[#151D2E] p-2.5 rounded-xl border border-white/5">
+                  <span className="text-slate-400 block text-[9px] uppercase tracking-wider">{currentTeam.shortName} BALANCE</span>
+                  <span className="text-emerald-400 font-bold text-sm truncate block mt-0.5">
+                    {formatPoints(currentTeam.remainingPurse)} Points
+                  </span>
+                </div>
+
+                <div className="bg-[#151D2E] p-2.5 rounded-xl border border-white/5">
+                  <span className="text-slate-400 block text-[9px] uppercase tracking-wider">MIN INCREMENT</span>
+                  <span className="text-cyan-400 font-bold text-sm truncate block mt-0.5">
+                    +{formatPoints(10000)} Points
+                  </span>
+                </div>
+
+                <div className="bg-[#151D2E] p-2.5 rounded-xl border border-white/5">
+                  <span className="text-slate-400 block text-[9px] uppercase tracking-wider">MAX SAFE BID</span>
+                  <span className="text-white font-bold text-sm truncate block mt-0.5">
+                    {formatPoints(maxSafeBid)} Points
+                  </span>
+                </div>
+              </div>
+
+              {/* Quick Increment Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <span className="text-slate-500 text-[10px] uppercase">PRESETS:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomBidInput((currentBid + 10000).toString());
+                    setBidFeedback(null);
+                  }}
+                  className="px-2.5 py-1 bg-[#151D2E] hover:bg-cyan-500/20 text-cyan-300 rounded-lg border border-cyan-500/30 text-[11px] font-bold transition-all cursor-pointer"
+                >
+                  Min Required ({formatPoints(currentBid + 10000)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomBidInput((currentBid + 25000).toString());
+                    setBidFeedback(null);
+                  }}
+                  className="px-2.5 py-1 bg-[#151D2E] hover:bg-cyan-500/20 text-cyan-300 rounded-lg border border-cyan-500/30 text-[11px] font-bold transition-all cursor-pointer"
+                >
+                  +25,000 Points
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomBidInput((currentBid + 50000).toString());
+                    setBidFeedback(null);
+                  }}
+                  className="px-2.5 py-1 bg-[#151D2E] hover:bg-cyan-500/20 text-cyan-300 rounded-lg border border-cyan-500/30 text-[11px] font-bold transition-all cursor-pointer"
+                >
+                  +50,000 Points
+                </button>
+              </div>
+
+              {/* Numeric Input & PLACE CUSTOM BID Button */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <div className="flex-1 flex items-center gap-2 bg-[#151D2E] px-3.5 py-3 rounded-xl border border-white/10 focus-within:border-cyan-400 focus-within:ring-1 focus-within:ring-cyan-400 transition-all">
+                  <span className="text-[#00D2FF] font-mono font-bold text-xs shrink-0">PTS</span>
+                  <input
+                    type="number"
+                    min={currentBid + 10000}
+                    step="1000"
+                    placeholder="Enter bid amount in Points"
+                    value={customBidInput}
+                    onChange={(e) => {
+                      setCustomBidInput(e.target.value);
+                      if (bidFeedback) setBidFeedback(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyCustomBid();
+                      }
+                    }}
+                    className="w-full bg-transparent text-white font-mono text-sm font-semibold focus:outline-none placeholder:text-slate-500"
+                  />
+                  {customBidInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomBidInput('');
+                        setBidFeedback(null);
+                      }}
+                      className="text-slate-500 hover:text-white font-mono text-xs px-1 cursor-pointer"
+                      title="Clear input"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleApplyCustomBid}
+                  className="py-3 px-5 bg-gradient-to-r from-cyan-400 via-[#00D2FF] to-blue-500 hover:brightness-110 text-[#003543] rounded-xl font-heading text-xs font-black tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(0,210,255,0.3)] flex items-center justify-center gap-2 shrink-0 cursor-pointer active:scale-95"
+                >
+                  <Gavel className="w-4 h-4" />
+                  <span>PLACE CUSTOM BID</span>
+                </button>
+              </div>
+
+              {/* Dynamic Points Remaining Preview for Custom Bid */}
+              {isCustomInputValidNum && (
+                <div
+                  className={`flex items-center justify-between px-3.5 py-2 rounded-xl font-mono text-xs border transition-all ${
+                    isCustomBidOverSafeMax
+                      ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                      : 'bg-[#151D2E] border-white/5 text-slate-300'
+                  }`}
+                >
+                  <span>Points Remaining after this Custom Bid:</span>
+                  <div className="flex items-center gap-2 font-bold">
+                    <span className={isCustomBidOverSafeMax ? 'text-rose-400' : 'text-cyan-300'}>
+                      {formatPoints(Math.max(0, purseAfterCustomBid || 0))} Points
+                    </span>
+                    {isCustomBidOverSafeMax ? (
+                      <span className="text-[10px] text-rose-400 bg-rose-500/20 px-2 py-0.5 rounded">
+                        ⚠ EXCEEDS MAX SAFE BID ({formatPoints(maxSafeBid)} Points)
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                        ● RESERVE SAFE
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Feedback Alert Banner (Error / Success Messages) */}
+              {bidFeedback && (
+                <div
+                  className={`p-3 rounded-xl font-mono text-xs border flex items-center gap-2.5 transition-all animate-in fade-in duration-150 ${
+                    bidFeedback.type === 'success'
+                      ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                      : 'bg-rose-950/50 text-rose-300 border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.2)]'
+                  }`}
+                >
+                  {bidFeedback.type === 'success' ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="font-semibold leading-relaxed">{bidFeedback.message}</span>
+                </div>
+              )}
+
+              {/* Contextual Rule Guidance */}
+              <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-0.5">
+                <span>Total valuation entry • Points are deducted only if player is marked SOLD.</span>
+                <span>Authorized Franchise: {currentTeam.name}</span>
               </div>
             </div>
           </div>
@@ -466,7 +750,7 @@ export const TeamManager: React.FC = () => {
                 </h3>
               </div>
               <span className="font-mono text-xs text-cyan-400">
-                PURSE SPENT: ₹{(currentTeam.startingPurse - currentTeam.remainingPurse).toLocaleString('en-IN')}
+                POINTS SPENT: {formatPoints(currentTeam.startingPurse - currentTeam.remainingPurse)} Points
               </span>
             </div>
 
@@ -476,26 +760,40 @@ export const TeamManager: React.FC = () => {
                   No players acquired in current auction session yet.
                 </div>
               ) : (
-                mySquadPlayers.map((p, idx) => (
-                  <div
-                    key={p.id}
-                    className="p-3 rounded-xl bg-[#151D2E] border border-white/5 flex items-center justify-between text-xs font-mono"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-slate-500 font-bold">#{idx + 1}</span>
-                      <div>
-                        <p className="font-bold text-white font-heading text-sm">{p.name}</p>
-                        <span className="text-[11px] text-slate-400">
-                          {p.role} • {p.cluster}
+                mySquadPlayers.map((p, idx) => {
+                  const isHighlighted = p.name === 'Arjun Shah';
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-mono transition-all ${
+                        isHighlighted
+                          ? 'bg-cyan-950/40 border-cyan-400 ring-1 ring-cyan-400 shadow-[0_0_15px_rgba(0,210,255,0.2)]'
+                          : 'bg-[#151D2E] border-white/5 hover:border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-500 font-bold w-4">#{idx + 1}</span>
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-8 h-8 rounded-lg object-cover bg-slate-800 shrink-0 border border-white/10"
+                        />
+                        <div>
+                          <p className="font-bold text-white font-heading text-sm">{p.name}</p>
+                          <span className="text-[11px] text-slate-400">
+                            {p.role} • {p.cluster}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`font-bold ${isHighlighted ? 'text-[#00D2FF] text-sm' : 'text-cyan-400'}`}>
+                          {formatPoints(p.soldPrice)} Points
                         </span>
+                        <span className="block text-[10px] text-slate-500">Lot #{p.lotNumber}</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-cyan-400 font-bold">₹{p.soldPrice?.toLocaleString('en-IN')}</span>
-                      <span className="block text-[10px] text-slate-500">Lot #{p.lotNumber}</span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -545,7 +843,7 @@ export const TeamManager: React.FC = () => {
 
                     <div className="text-right">
                       <span className="text-white font-bold">
-                        {p.soldPrice ? `₹${p.soldPrice.toLocaleString('en-IN')}` : '—'}
+                        {p.soldPrice ? `${formatPoints(p.soldPrice)} Points` : '—'}
                       </span>
                       <span
                         className={`block text-[10px] font-bold ${

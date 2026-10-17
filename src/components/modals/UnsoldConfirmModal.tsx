@@ -1,6 +1,7 @@
 import React from 'react';
 import { Ban, X } from 'lucide-react';
 import { useAuction } from '../../context/AuctionContext';
+import { formatPoints } from '../../utils/formatters';
 
 export const UnsoldConfirmModal: React.FC = () => {
   const { isUnsoldModalOpen, closeUnsoldModal, confirmUnsold, activePlayer } = useAuction();
@@ -43,15 +44,15 @@ export const UnsoldConfirmModal: React.FC = () => {
           </div>
 
           <div className="flex justify-between items-center text-sm text-slate-400">
-            <span>Base Opening Price:</span>
+            <span>Base Points:</span>
             <span className="text-slate-200 font-mono text-lg font-bold">
-              ₹{activePlayer.basePrice.toLocaleString('en-IN')}
+              {formatPoints(activePlayer.basePrice)} Points
             </span>
           </div>
         </div>
 
         <p className="text-xs text-slate-400 leading-relaxed">
-          Marking this player as UNSOLD will conclude the current bidding round with no winning bidder. No funds will be deducted from any franchise. The player will be filed under unsold lots.
+          Marking this player as UNSOLD will conclude the current bidding round with no winning bidder. No points will be deducted from any team. The player will be filed under unsold lots.
         </p>
 
         <div className="flex items-center gap-3 justify-end pt-2">

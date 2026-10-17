@@ -14,6 +14,45 @@ export interface PlayerStats {
   average?: number;
 }
 
+export type PlayingCategory = 'Batsman' | 'Bowler' | 'All-Rounder' | 'Wicket Keeper';
+export type BattingStyle = 'Right Hand' | 'Left Hand';
+export type BowlingStyle = 'Fast' | 'Medium' | 'Spin' | 'NA';
+export type ExperienceLevel = 'Advanced' | 'Intermediate' | 'Beginner';
+export type RolePreference = 'Captain' | 'Player' | 'Team Manager';
+
+export interface PlayerRegistrationProfile {
+  // A. Employee Details
+  fullName: string;
+  employeeId?: string;
+  department: string;
+  workLocation: string;
+  mobileNumber?: string;
+  email?: string;
+
+  // B. Cricket Registration
+  participationConfirmed: boolean;
+  rolePreference: RolePreference;
+  primaryCategory: PlayingCategory;
+  battingStyle: BattingStyle;
+  bowlingStyle: BowlingStyle;
+  experienceLevel: ExperienceLevel;
+  previousRepresentation?: string;
+
+  // C. Skills & Achievements
+  battingRating: number; // 1-5
+  bowlingRating: number; // 1-5
+  fieldingRating: number; // 1-5
+  overallRating: number; // 0-10
+  achievements?: string;
+
+  // E. Medical / Injury Information (Admin Only)
+  medicalClearance?: boolean;
+  fitnessStatus?: string;
+  injuryHistory?: string;
+  emergencyContactRelation?: string;
+  isDemoSampleData?: boolean;
+}
+
 export interface Player {
   id: string;
   lotNumber: number;
@@ -31,6 +70,7 @@ export interface Player {
   status: PlayerStatus;
   soldToTeamId?: string | null;
   soldPrice?: number | null;
+  registrationProfile?: PlayerRegistrationProfile;
 }
 
 export interface Team {
@@ -79,4 +119,4 @@ export interface AuditLog {
   teamId?: string;
 }
 
-export type ViewMode = 'admin' | 'team' | 'projector' | 'live-room' | 'pool';
+export type ViewMode = 'admin' | 'team' | 'projector' | 'squads' | 'pool';
